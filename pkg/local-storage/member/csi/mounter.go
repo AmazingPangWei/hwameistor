@@ -2,10 +2,11 @@ package csi
 
 import (
 	"fmt"
-	"github.com/hwameistor/hwameistor/pkg/exechelper/basicexecutor"
 	"os"
 	"strings"
 	"sync"
+
+	"github.com/hwameistor/hwameistor/pkg/exechelper/basicexecutor"
 
 	log "github.com/sirupsen/logrus"
 	"k8s.io/mount-utils"
@@ -29,12 +30,19 @@ type Mounter interface {
 	FormatAndMount(devPath string, mountpoint string, fsType string, flags []string) error
 	Unmount(mountpoint string) error
 	GetDeviceMountPoints(devPath string) []string
+	IsMountPoint(file string) (bool, error)
+	NeedResize(devicePath string, deviceMountPath string) (bool, error)
 }
 
 type linuxMounter struct {
 	mounter *mount.SafeFormatAndMount
+	resizer *mount.ResizeFs
 
 	logger *log.Entry
+}
+
+func (m *linuxMounter) IsMountPoint(file string) (bool, error) {
+	return m.mounter.IsMountPoint(file)
 }
 
 // NewLinuxMounter creates a mounter
@@ -44,7 +52,8 @@ func NewLinuxMounter(logger *log.Entry) Mounter {
 			Interface: mount.New("/bin/mount"),
 			Exec:      utilexec.New(),
 		},
-		logger: logger,
+		resizer: mount.NewResizeFs(utilexec.New()),
+		logger:  logger,
 	}
 }
 
@@ -184,6 +193,10 @@ func (m *linuxMounter) GetDeviceMountPoints(devPath string) []string {
 		}
 	}
 	return mps
+}
+
+func (m *linuxMounter) NeedResize(devicePath string, deviceMountPath string) (bool, error) {
+	return m.resizer.NeedResize(devicePath, deviceMountPath)
 }
 
 func isPathExist(pathname string) (bool, error) {
